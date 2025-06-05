@@ -1,277 +1,203 @@
-# Iqraa - Book Management System Backend
+# Iqraa - Library Management System Backend
 
 ## Project Overview
-Iqraa is a comprehensive book management system built with Django REST Framework and PostgreSQL. The system provides features for managing books, user accounts, orders (borrowing/purchasing), reviews, and personalized book recommendations.
+Iqraa is a comprehensive library management system built with FastAPI and PostgreSQL. The system provides features for managing books, user accounts, orders (borrowing/purchasing), reviews, and personalized book recommendations using machine learning.
 
 ## Technology Stack
-- **Framework**: Django REST Framework
-- **Database**: PostgreSQL
+- **Framework**: FastAPI
+- **Database**: PostgreSQL with SQLAlchemy ORM
 - **Authentication**: JWT (JSON Web Tokens)
 - **Additional Features**: 
-  - Sentiment Analysis for book reviews
-  - Machine Learning-based book recommendations
+  - Sentiment Analysis for book reviews using Transformers
+  - Machine Learning-based book recommendations using Implicit and scikit-learn
   - CORS support for frontend integration
-  - Docker containerization
+  - Docker containerization support
 
 ## Project Structure
 ```
 iqraa/
-├── books/             # Book management
-├── users/             # User authentication and profiles
-├── orders/            # Book borrowing and purchasing
-├── reviews/           # Book reviews and ratings
-├── recommendations/   # ML-based book recommendations
-└── iqraa/            # Project settings
+├── app/
+│   ├── api/            # API endpoints
+│   ├── core/           # Core functionality (config, auth, etc.)
+│   ├── crud/           # Database operations
+│   ├── models/         # SQLAlchemy models
+│   ├── schemas/        # Pydantic models
+│   └── services/       # Business logic and ML services
+├── alembic/            # Database migrations
+├── tests/              # Test files
+└── requirements.txt    # Project dependencies
 ```
 
 ## Features
 1. **User Management**
    - User registration and authentication
    - Profile management
-   - JWT-based authentication
+   - JWT-based authentication with refresh tokens
 
 2. **Book Management**
    - Book catalog with detailed information
    - Search and filter capabilities
-   - Genre-based categorization
+   - Category-based organization
+   - Stock management
 
 3. **Order System**
-   - Book borrowing
+   - Book borrowing with due dates
    - Book purchasing
    - Order history tracking
+   - Transaction management
 
 4. **Review System**
    - Book ratings and reviews
-   - Sentiment analysis of reviews
-   - Recent and top-rated reviews
+   - Sentiment analysis using RoBERTa model
+   - Review statistics and analytics
 
 5. **Recommendation System**
+   - Hybrid recommendation engine (content-based + collaborative filtering)
    - Personalized book recommendations
-   - Machine learning-based suggestions
-   - Top-rated books recommendations
+   - Trending books
+   - Similar books suggestions
 
 ## API Endpoints
 
 ### Users API
-- `GET/POST /api/users/` - List/Create users
-- `GET/PUT/DELETE /api/users/{id}/` - Manage specific user
-- `GET /api/users/me/` - Current user profile
-- `POST /api/users/{id}/change_password/` - Change password
+- `POST /api/v1/users/register` - Register new user
+- `POST /api/v1/users/login` - User login
+- `GET /api/v1/users/me` - Current user profile
+- `PUT /api/v1/users/me` - Update user profile
+- `POST /api/v1/users/refresh-token` - Refresh JWT token
 
 ### Books API
-- `GET/POST /api/books/` - List/Create books
-- `GET/PUT/DELETE /api/books/{id}/` - Manage specific book
-- `GET /api/books/genres/` - List book genres
+- `GET /api/v1/books/` - List books with filtering
+- `POST /api/v1/books/` - Create new book
+- `GET /api/v1/books/{book_id}` - Get book details
+- `PUT /api/v1/books/{book_id}` - Update book
+- `DELETE /api/v1/books/{book_id}` - Delete book
+- `GET /api/v1/books/categories/` - List book categories
 
 ### Orders API
-- `GET/POST /api/orders/` - List/Create orders
-- `GET/PUT/DELETE /api/orders/{id}/` - Manage specific order
-- `POST /api/orders/{id}/borrow/` - Borrow book
-- `POST /api/orders/{id}/purchase/` - Purchase book
-- `POST /api/orders/{id}/return_book/` - Return book
-- `GET /api/orders/borrowed/` - List borrowed books
-- `GET /api/orders/purchased/` - List purchased books
+- `GET /api/v1/orders/` - List orders
+- `POST /api/v1/orders/borrow` - Borrow a book
+- `POST /api/v1/orders/purchase` - Purchase a book
+- `POST /api/v1/orders/{order_id}/return` - Return a book
+- `GET /api/v1/orders/statistics` - Get order statistics
 
 ### Reviews API
-- `GET/POST /api/reviews/` - List/Create reviews
-- `GET/PUT/DELETE /api/reviews/{id}/` - Manage specific review
-- `GET /api/reviews/my_reviews/` - User's reviews
-- `GET /api/reviews/recent/` - Recent reviews
-- `GET /api/reviews/top_rated/` - Top-rated reviews
-- `GET /api/reviews/{id}/sentiment/` - Review sentiment
-- `GET /api/reviews/book_sentiments/` - Book review sentiments
+- `GET /api/v1/reviews/` - List reviews
+- `POST /api/v1/reviews/` - Create review
+- `GET /api/v1/reviews/{review_id}` - Get review details
+- `GET /api/v1/reviews/sentiment-analysis` - Get review sentiment statistics
 
 ### Recommendations API
-- `GET /api/recommendations/` - List recommendations
-- `POST /api/recommendations/generate/` - Generate recommendations
-- `GET /api/recommendations/top_rated_books/` - Top-rated books
+- `GET /api/v1/recommendations/personalized` - Get personalized recommendations
+- `GET /api/v1/recommendations/trending` - Get trending books
+- `GET /api/v1/recommendations/similar/{book_id}` - Get similar books
 
 ## Setup Instructions
 
-1. **Using Docker (Recommended)**
-   ```bash
-   # Build and start the containers
-   docker-compose up --build
+1. **Prerequisites**
+   - Python 3.8 or higher
+   - PostgreSQL 12 or higher
+   - pip (Python package manager)
+   - Docker and Docker Compose (optional)
 
-   # The application will be available at http://localhost:8000
-   ```
-
-2. **Manual Setup (Alternative)**
+2. **Environment Setup**
    ```bash
    # Create virtual environment
    python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   venv\Scripts\activate     # Windows
-
+   
+   # Activate virtual environment
+   # On Windows:
+   venv\Scripts\activate
+   # On Linux/Mac:
+   source venv/bin/activate
+   
    # Install dependencies
    pip install -r requirements.txt
    ```
 
 3. **Environment Variables**
-   The following environment variables are configured in docker-compose.yml:
+   Create a `.env` file in the project root with:
    ```
-   DATABASE_URL=postgresql://postgres:postgres@db:5432/iqraa_db
-   DJANGO_SETTINGS_MODULE=iqraa.settings
+   # Database
+   POSTGRES_DB=iqraa_db
+   POSTGRES_USER=iqraa_user
+   POSTGRES_PASSWORD=iqraa_password
+   POSTGRES_HOST=localhost
+   POSTGRES_PORT=5432
+   
+   # Security
+   SECRET_KEY=your-secret-key-here
+   ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_MINUTES=1440
+   
+   # API
+   DEBUG=False
+   API_V1_STR=/api/v1
    ```
 
 4. **Database Setup**
-   - When using Docker, PostgreSQL is automatically configured
-   - For manual setup, configure PostgreSQL according to the settings in docker-compose.yml
-
-5. **Run Development Server (for manual setup)**
    ```bash
-   python manage.py migrate
-   python manage.py runserver
+   # Run database migrations
+   alembic upgrade head
    ```
 
-## Dependencies
-See `requirements.txt` for complete list:
-- Django
-- Django REST Framework
-- psycopg2-binary
-- django-cors-headers
-- scikit-learn (for ML features)
-- nltk (for sentiment analysis)
-- And more...
-
-## Security Features
-- JWT Authentication
-- Secure password handling
-- CORS configuration
-- SSL/TLS support in production
-- XSS and CSRF protection
+5. **Run Development Server**
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
 
 ## API Documentation
-For detailed API documentation, you can use Django REST Framework's built-in documentation interface at:
-`http://localhost:8000/api/`
+FastAPI provides automatic API documentation:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+## Dependencies
+Key dependencies (see `requirements.txt` for complete list):
+- FastAPI and Uvicorn for the web framework
+- SQLAlchemy and Alembic for database ORM and migrations
+- Pydantic for data validation
+- Python-jose and Passlib for authentication
+- Transformers and PyTorch for sentiment analysis
+- Implicit and scikit-learn for recommendations
+- pytest and httpx for testing
+
+## Development
+1. **Code Style**
+   - Black for code formatting
+   - isort for import sorting
+   - flake8 for linting
+
+2. **Running Tests**
+   ```bash
+   pytest
+   ```
+
+3. **Database Migrations**
+   ```bash
+   # Create new migration
+   alembic revision --autogenerate -m "description"
+   
+   # Apply migrations
+   alembic upgrade head
+   ```
+
+## Security Features
+- JWT-based authentication with refresh tokens
+- Password hashing with bcrypt
+- CORS middleware configuration
+- Input validation with Pydantic
+- SQL injection protection with SQLAlchemy
+- Rate limiting (can be implemented as needed)
 
 ## Contributing
-Please read our contributing guidelines before submitting pull requests.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 This project is licensed under the FCDS License.
 
-# this is final gradution project backend #
-all the steps to make this up will be in the this file
-
-## Prerequisites
-
-*   Python (version 3.8 or higher recommended)
-*   pip (Python package manager)
-*   Docker and Docker Compose (for running the PostgreSQL database)
-
-## Installation
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone <your-repo-url> iqraa
-    cd iqraa
-    ```
-
-2.  **Create a virtual environment (recommended):**
-
-    ```bash
-    python -m venv venv
-    # On Windows:
-    venv\Scripts\activate
-    # On Linux/Mac:
-    # source venv/bin/activate
-    ```
-
-3.  **Install dependencies:**
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4.  **Set up environment variables:**
-
-    Create a `.env` file in the project root (if it doesn't exist) and add the following (adjust values as needed):
-
-    ```
-    DJANGO_SECRET_KEY=your-secret-key-here
-    DEBUG=True
-    # Add other environment variables if required (e.g., database credentials if not using Docker)
-    ```
-
-5.  **Run Database Migrations:**
-
-    ```bash
-    python manage.py migrate
-    ```
-
-6.  **Create a superuser (optional, for admin access):**
-
-    ```bash
-    python manage.py createsuperuser
-    ```
-
-## Running the Development Server
-
-```bash
-python manage.py runserver
-```
-
-The development server will usually be available at `http://127.0.0.1:8000/`.
-
-## Running the Database with Docker
-
-This project uses Docker Compose to run a PostgreSQL database container.
-
-1.  **Navigate to the `database` directory:**
-
-    ```bash
-    cd database
-    ```
-
-2.  **Start the PostgreSQL container:**
-
-    ```bash
-    docker-compose up -d
-    ```
-
-    This command builds (if necessary) and starts the `postgres` service defined in `database/docker-compose.yml` in detached mode (`-d`). It will create a container named `iqraa_db`.
-
-3.  **Verify the container is running:**
-
-    ```bash
-    docker ps | grep iqraa_db
-    ```
-
-    You should see output indicating that the `iqraa_db` container is running and healthy.
-
-4.  **Accessing the Database:**
-
-    The PostgreSQL database is accessible from your Django application using the following settings (already configured in `iqraa/settings.py`):
-
-    ```python
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': 'iqraa_db',
-            'USER': 'iqraa_user',
-            'PASSWORD': 'iqraa_password',
-            'HOST': '127.0.0.1', # Or 'localhost'
-            'PORT': '5432',
-        }
-    }
-    ```
-
-    You can also connect to the database directly using a PostgreSQL client (like `psql`) using the credentials defined in the `docker-compose.yml` file (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`) and the host/port.
-
-5.  **Stopping the Database Container:**
-
-    To stop the running container, run the following command from the `database` directory:
-
-    ```bash
-    docker-compose down
-    ```
-
-    This will stop and remove the `iqraa_db` container. The data volume (`postgres_data`) will persist unless you explicitly remove it (e.g., using `docker volume rm iqraa_postgres_data`).
-
-## Additional Notes
-
-*   **Custom Book Form:** A custom HTML form for adding/editing books is available at `http://127.0.0.1:8000/books/add/` and `http://127.0.0.1:8000/books/<book_id>/edit/`.
-*   **Django Admin:** The standard Django admin interface is available at `http://127.0.0.1:8000/admin/`.
-*   **API Endpoints:** API endpoints are generally available under the `/api/` prefix (e.g., `/api/books/`).
+## Support
+For support, please open an issue in the repository or contact the development team.
