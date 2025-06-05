@@ -4,7 +4,8 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
-from implicit.als import AlternatingLeastSquares
+from surprise import SVD
+from surprise import Dataset, Reader
 import pickle
 import logging
 from datetime import datetime
@@ -121,13 +122,19 @@ class HybridRecommender:
             content_matrix = self.vectorizer.fit_transform(self.books_df['content'])
             self.content_model = cosine_similarity(content_matrix)
 
-            # Train collaborative filtering model
-            self.collaborative_model = AlternatingLeastSquares(
-                factors=64,
-                regularization=0.01,
-                iterations=15
+            # Train collaborative filtering model using scikit-surprise
+            reader = Reader(rating_scale=(0, 1))
+            data = Dataset.load_from_df(
+                pd.DataFrame({
+                    'user_id': [a['user_id'] for a in user_activities],
+                    'book_id': [a['book_id'] for a in user_activities],
+                    'rating': [a['interaction_score'] for a in user_activities]
+                }),
+                reader
             )
-            self.collaborative_model.fit(self.user_item_matrix.T)
+            trainset = data.build_full_trainset()
+            self.collaborative_model = SVD(n_factors=64, n_epochs=15, lr_all=0.01, reg_all=0.01)
+            self.collaborative_model.fit(trainset)
 
             # Save the trained model
             self.save_model()
@@ -162,17 +169,13 @@ class HybridRecommender:
     ) -> List[Tuple[int, float]]:
         """Get collaborative filtering recommendations for a user."""
         try:
-            user_idx = list(self.user_item_matrix.indices).index(user_id)
-            user_items = self.collaborative_model.recommend(
-                user_idx,
-                self.user_item_matrix[user_idx],
-                N=n_recommendations
-            )
+            predictions = []
+            for book_id in self.books_df['book_id']:
+                pred = self.collaborative_model.predict(user_id, book_id)
+                predictions.append((book_id, pred.est))
             
-            return [
-                (self.books_df.iloc[idx]['book_id'], float(score))
-                for idx, score in zip(user_items[0], user_items[1])
-            ]
+            predictions.sort(key=lambda x: x[1], reverse=True)
+            return predictions[:n_recommendations]
         except Exception as e:
             logger.error(f"Error getting collaborative recommendations: {str(e)}")
             return []
@@ -198,7 +201,7 @@ class HybridRecommender:
                 for book_id, score in content_recs:
                     recommendations[book_id] = content_weight * score
 
-            # Get collaborative recommendations if user_id is provided
+            # Get collaborative filtering recommendations if user_id is provided
             if user_id:
                 collab_recs = self.get_collaborative_recommendations(user_id, n_recommendations)
                 for book_id, score in collab_recs:
@@ -207,20 +210,15 @@ class HybridRecommender:
                     else:
                         recommendations[book_id] = collab_weight * score
 
-            # Sort and format recommendations
-            sorted_recs = sorted(
-                recommendations.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:n_recommendations]
-
+            # Sort recommendations by score
+            sorted_recs = sorted(recommendations.items(), key=lambda x: x[1], reverse=True)
             return [
                 {
-                    "book_id": book_id,
-                    "relevance_score": float(score),
-                    "reason": self._get_recommendation_reason(book_id, user_id, book_id)
+                    'book_id': book_id,
+                    'score': score,
+                    'reason': self._get_recommendation_reason(book_id, user_id, book_id)
                 }
-                for book_id, score in sorted_recs
+                for book_id, score in sorted_recs[:n_recommendations]
             ]
         except Exception as e:
             logger.error(f"Error getting hybrid recommendations: {str(e)}")
@@ -232,27 +230,10 @@ class HybridRecommender:
         user_id: Optional[int],
         source_book_id: Optional[int]
     ) -> str:
-        """Generate a human-readable reason for the recommendation."""
-        reasons = []
-        
-        if source_book_id:
-            book_title = self.books_df[self.books_df['book_id'] == book_id]['title'].iloc[0]
-            source_title = self.books_df[self.books_df['book_id'] == source_book_id]['title'].iloc[0]
-            reasons.append(f"Similar to '{source_title}'")
-
-        if user_id:
-            user_books = self.books_df[
-                self.books_df['book_id'].isin(
-                    self.user_item_matrix[user_id].indices
-                )
-            ]
-            if not user_books.empty:
-                common_genres = set(
-                    self.books_df[self.books_df['book_id'] == book_id]['genres'].iloc[0]
-                ).intersection(
-                    set(genre for genres in user_books['genres'] for genre in genres)
-                )
-                if common_genres:
-                    reasons.append(f"Based on your interest in {', '.join(common_genres)}")
-
-        return " and ".join(reasons) if reasons else "Recommended based on user preferences" 
+        """Generate a reason for the recommendation."""
+        if user_id and source_book_id:
+            return f"Recommended based on your interest in similar books and your reading history."
+        elif user_id:
+            return f"Recommended based on your reading history and preferences."
+        else:
+            return f"Recommended based on similarity to books you've viewed." 

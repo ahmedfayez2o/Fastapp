@@ -215,23 +215,16 @@ def update_recommendation(
     current_user = Depends(get_current_user)
 ) -> Recommendation:
     """Update a recommendation set."""
-    db_recommendation = crud_recommendations.get_recommendation(
+    db_recommendation = crud_recommendations.update_recommendation(
         db=db,
-        recommendation_id=recommendation_id
+        recommendation_id=recommendation_id,
+        recommendation=recommendation
     )
     if not db_recommendation:
         raise HTTPException(status_code=404, detail="Recommendation not found")
     if db_recommendation.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this recommendation")
-    
-    updated = crud_recommendations.update_recommendation(
-        db=db,
-        recommendation_id=recommendation_id,
-        recommendation=recommendation
-    )
-    if not updated:
-        raise HTTPException(status_code=404, detail="Recommendation not found")
-    return updated
+    return db_recommendation
 
 @router.get("/trending/", response_model=List[TrendingBook])
 def get_trending_books(
@@ -255,73 +248,61 @@ def generate_recommendations(
     background_tasks: BackgroundTasks,
     current_user = Depends(get_current_user)
 ) -> RecommendationResponse:
-    """Generate new recommendations for the user."""
+    """Generate personalized recommendations for the user."""
     recommender = HybridRecommender(db)
     
-    # Get recommendations based on type
-    if request.recommendation_type == "PERSONALIZED":
-        recommendations = recommender.get_hybrid_recommendations(
-            user_id=current_user.id,
-            n_recommendations=request.limit
+    # Get user activities and books
+    user_activities = crud_recommendations.get_user_activities(
+        db=db,
+        user_id=current_user.id,
+        limit=1000
+    )
+    books = crud_books.get_books(db, skip=0, limit=1000)
+    
+    # Train the model if needed
+    if not recommender.content_model or not recommender.collaborative_model:
+        background_tasks.add_task(
+            recommender.train,
+            books=[book.__dict__ for book in books],
+            user_activities=[activity.__dict__ for activity in user_activities]
         )
-    elif request.recommendation_type == "SIMILAR" and request.source_book_id:
-        recommendations = recommender.get_hybrid_recommendations(
-            book_id=request.source_book_id,
-            n_recommendations=request.limit
-        )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid recommendation type or missing source book"
-        )
+    
+    # Generate recommendations
+    recommendations = recommender.get_hybrid_recommendations(
+        user_id=current_user.id,
+        n_recommendations=request.n_recommendations,
+        content_weight=request.content_weight,
+        collab_weight=request.collab_weight
+    )
     
     # Create recommendation record
-    recommendation_items = [
-        {
-            "book_id": rec["book_id"],
-            "relevance_score": rec["relevance_score"],
-            "position": idx + 1,
-            "reason": rec["reason"]
-        }
-        for idx, rec in enumerate(recommendations)
-    ]
-    
-    db_recommendation = crud_recommendations.create_recommendation(
+    recommendation = crud_recommendations.create_recommendation(
         db=db,
         user_id=current_user.id,
         recommendation=RecommendationCreate(
-            recommendation_type=request.recommendation_type,
-            source_book_id=request.source_book_id,
-            items=recommendation_items
+            items=[
+                {
+                    "book_id": rec["book_id"],
+                    "relevance_score": rec["score"],
+                    "reason": rec["reason"]
+                }
+                for rec in recommendations
+            ]
         )
     )
     
     # Get book details
     books = []
-    for item in db_recommendation.items:
-        book = crud_books.get_book(db, book_id=item.book_id)
+    for rec in recommendations:
+        book = crud_books.get_book(db, book_id=rec["book_id"])
         if book:
             books.append({
                 **book.__dict__,
-                "relevance_score": item.relevance_score,
-                "reason": item.reason
+                "relevance_score": rec["score"],
+                "reason": rec["reason"]
             })
     
-    # Schedule model retraining in background if needed
-    background_tasks.add_task(
-        recommender.train,
-        books=[book.__dict__ for book in crud_books.get_books(db, limit=1000)],
-        user_activities=[
-            activity.__dict__
-            for activity in crud_recommendations.get_user_activities(
-                db=db,
-                user_id=current_user.id,
-                limit=1000
-            )
-        ]
-    )
-    
     return RecommendationResponse(
-        recommendation=db_recommendation,
+        recommendation=recommendation,
         books=books
     ) 
