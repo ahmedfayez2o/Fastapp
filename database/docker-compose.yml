@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: iqraa_db
+    environment:
+      POSTGRES_DB: iqraa_db
+      POSTGRES_USER: iqraa_user
+      POSTGRES_PASSWORD: iqraa_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - iqraa_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iqraa_user -d iqraa_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  iqraa_network:
+    driver: bridge 
